@@ -1,73 +1,99 @@
 from flask import Flask, jsonify
+import requests
 
 app = Flask(__name__)
 
-# Rota 1: A mensagem de boas-vindas
+# Rota 1: A raiz da nossa API
 @app.route('/')
 def home():
-    return jsonify({"mensagem": "Minha API está no ar na internet!"})
+    return jsonify({"mensagem": "API de Busca de CEP está no ar!"})
 
-# Rota 2: O nosso Back-end (A API pura)
-@app.route('/produto/<codigo>')
-def consultar_produto(codigo):
-    estoque = {"101": {"nome": "Guarda-sol", "preco": 85.00}}
-    if codigo in estoque:
-        return jsonify(estoque[codigo])
-    return jsonify({"erro": "Produto não encontrado"}), 404
+# Rota 2: O Back-end - Onde sua API conversa com a API do ViaCEP
+@app.route('/cep/<numero_cep>')
+def consultar_cep(numero_cep):
+    # Tiramos o tracinho caso o usuário digite 11704-080
+    cep_limpo = numero_cep.replace("-", "").strip()
+    
+    # Fazemos o pedido oficial para o sistema dos Correios/ViaCEP
+    url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
+    resposta = requests.get(url)
+    
+    # Se a comunicação deu certo:
+    if resposta.status_code == 200:
+        dados = resposta.json()
+        if "erro" in dados:
+            return jsonify({"erro": "CEP não encontrado!"}), 404
+        return jsonify(dados) # Devolvemos os dados para o nosso Front-end
+    else:
+        return jsonify({"erro": "Formato de CEP inválido!"}), 400
 
-# Rota 3: O nosso Front-end (A Interface Gráfica)
-@app.route('/loja')
-def interface_loja():
+# Rota 3: O Front-end - A sua nova Interface Gráfica
+@app.route('/busca')
+def interface_busca():
     return """
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
         <meta charset="UTF-8">
-        <title>Minha Loja de Praia</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Buscador de CEP</title>
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background-color: #e0f7fa; padding-top: 50px; }
-            .caixa { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: inline-block; }
-            input { padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; width: 200px; }
-            button { padding: 10px 20px; font-size: 16px; background-color: #00796b; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px; transition: 0.3s; }
-            button:hover { background-color: #004d40; }
-            #resultado { margin-top: 20px; font-size: 20px; font-weight: bold; color: #333; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; display: flex; justify-content: center; padding-top: 80px; margin: 0; }
+            .cartao { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+            h2 { color: #1f2937; margin-top: 0; margin-bottom: 5px; font-size: 26px; }
+            p { color: #6b7280; margin-bottom: 25px; font-size: 15px; }
+            input { padding: 14px; font-size: 18px; border: 2px solid #e5e7eb; border-radius: 10px; width: 80%; margin-bottom: 20px; text-align: center; outline: none; transition: border 0.3s; }
+            input:focus { border-color: #3b82f6; }
+            button { padding: 14px 20px; font-size: 16px; background-color: #3b82f6; color: white; border: none; border-radius: 10px; cursor: pointer; width: 90%; font-weight: bold; transition: background-color 0.3s; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3); }
+            button:hover { background-color: #2563eb; }
+            #resultado { margin-top: 25px; font-size: 16px; color: #374151; text-align: left; background: #f9fafb; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb; display: none; line-height: 1.6; }
+            .erro { color: #ef4444; font-weight: bold; text-align: center; }
+            strong { color: #111827; }
         </style>
     </head>
     <body>
-        <div class="caixa">
-            <h2>Consulta de Produtos 🏖️</h2>
-            <p>Digite o código do produto (tente 101):</p>
+        <div class="cartao">
+            <h2>Buscador de Endereços 📍</h2>
+            <p>Descubra a rua e o bairro de qualquer lugar</p>
             
-            <input type="text" id="codigoInput" placeholder="Ex: 101">
-            <button onclick="buscarProduto()">Buscar na API</button>
+            <input type="text" id="cepInput" placeholder="Ex: 11704-080" maxlength="9">
+            <br>
+            <button onclick="buscarCEP()">Pesquisar CEP</button>
             
             <div id="resultado"></div>
         </div>
 
         <script>
-            function buscarProduto() {
-                // 1. Pega o número que o usuário digitou na caixinha
-                let codigo = document.getElementById('codigoInput').value;
+            function buscarCEP() {
+                let cep = document.getElementById('cepInput').value;
                 let areaResultado = document.getElementById('resultado');
                 
-                areaResultado.innerHTML = "Buscando...";
+                if(!cep) {
+                    alert("Por favor, digite um CEP!");
+                    return;
+                }
+
+                areaResultado.style.display = "block";
+                areaResultado.innerHTML = "<div style='text-align:center;'>Buscando no satélite... 🛰️</div>";
                 
-                // 2. O Front-end (Javascript) faz o pedido para a sua API
-                fetch('/produto/' + codigo)
-                    .then(resposta => resposta.json()) // 3. Recebe o JSON
+                // O Javascript chama a SUA API na rota nova /cep/
+                fetch('/cep/' + cep)
+                    .then(resposta => resposta.json())
                     .then(dados => {
-                        // 4. Monta a tela dependendo da resposta
                         if(dados.erro) {
-                            areaResultado.innerHTML = "❌ " + dados.erro;
-                            areaResultado.style.color = "red";
+                            areaResultado.innerHTML = "<div class='erro'>❌ " + dados.erro + "</div>";
                         } else {
-                            areaResultado.innerHTML = "✅ " + dados.nome + " - R$ " + dados.preco.toFixed(2);
-                            areaResultado.style.color = "green";
+                            // Monta o visual com os dados que vieram lá do ViaCEP
+                            areaResultado.innerHTML = `
+                                <strong>Rua:</strong> ${dados.logradouro || 'Não informado'}<br>
+                                <strong>Bairro:</strong> ${dados.bairro || 'Não informado'}<br>
+                                <strong>Cidade:</strong> ${dados.localidade} - ${dados.uf}<br>
+                                <strong>CEP:</strong> ${dados.cep}
+                            `;
                         }
                     })
                     .catch(erro => {
-                        areaResultado.innerHTML = "Erro ao comunicar com a API!";
-                        areaResultado.style.color = "red";
+                        areaResultado.innerHTML = "<div class='erro'>Erro ao comunicar com a API!</div>";
                     });
             }
         </script>
